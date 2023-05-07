@@ -197,7 +197,7 @@ class YamlConfig(dict):
         return yaml_config
 
 
-cfg = YamlConfig.load_from_file(os.path.join(os.path.dirname(__file__), 'defaults.yaml'))
+cfg = YamlConfig.load_from_file('cfg.yaml')
 
 
 # def update_cfg(cfg_name='', args=None, prefix_subcfg_list=(), verbose=True):
