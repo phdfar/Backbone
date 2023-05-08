@@ -1,0 +1,22 @@
+
+self.feature_map_scales [4, 8, 16, 32]
+ 
+height, width = image_seqs.tensors.shape[-2:]
+ images_tensor = image_seqs.tensors.view(image_seqs.num_seqs * image_seqs.num_frames, 3, height, width)
+
+
+print('images_tensor',images_tensor.size())
+        print(asd)
+        if cfg.TRAINING.FREEZE_BACKBONE:
+            with torch.no_grad():
+                features = self.backbone(images_tensor)
+        else:
+            features = self.backbone(images_tensor)
+
+cfg.TRAINING.FREEZE_BACKBONE False
+
+
+return OrderedDict([(k, v) for k, v in zip(self.feature_map_scales, features)])
+
+
+ torch.Size([8, 3, 192, 320])

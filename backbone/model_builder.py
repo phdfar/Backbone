@@ -1,19 +1,22 @@
 from collections import OrderedDict
 from functools import partial
+"""
 from stemseg.utils import ModelOutputConsts as ModelOutput, ModelPaths, LossConsts
 from stemseg.data.common import instance_masks_to_semseg_mask
 from stemseg.modeling.losses import CrossEntropyLoss, EmbeddingLoss
 
-from stemseg.utils.global_registry import GlobalRegistry
+"""
+#from global_registry import GlobalRegistry
+from backbone import build_resnet_fpn_backbone
 
-from stemseg.modeling.backbone import BACKBONE_REGISTRY
+"""
 from stemseg.modeling.embedding_utils import get_nb_free_dims
-
 from stemseg.modeling.embedding_decoder import EMBEDDING_HEAD_REGISTRY
 from stemseg.modeling.semseg_decoder import SEMSEG_HEAD_REGISTRY
 from stemseg.modeling.seediness_decoder import SEEDINESS_HEAD_REGISTRY
 
-from stemseg.config import cfg
+"""
+from config import cfg
 
 import math
 import os
@@ -21,7 +24,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
+"""
 SEMSEG_LOSS_REGISTRY = GlobalRegistry.get("SemsegLoss")
 SEMSEG_LOSS_REGISTRY.add("CrossEntropy", CrossEntropyLoss)
 
@@ -33,7 +36,7 @@ NORM_REGISTRY = GlobalRegistry.get("NormalizationLayer")
 NORM_REGISTRY.add("none", lambda num_groups: nn.Identity)
 NORM_REGISTRY.add("gn", lambda num_groups: partial(nn.GroupNorm, num_groups))
 
-
+"""
 class TrainingModel(nn.Module):
     def __init__(self, backbone, embedding_head, embedding_head_feature_map_scale, embedding_loss_criterion, semseg_head,
                  semseg_feature_map_scale, semseg_loss_criterion, seediness_head,
@@ -253,8 +256,9 @@ def build_model(restore_pretrained_backbone_wts=False, logger=None):
 
     # build backbone network
     backbone_type = cfg.MODEL.BACKBONE.TYPE
-    backbone_builder = BACKBONE_REGISTRY[backbone_type]
-    backbone = backbone_builder(cfg)
+    print('backbone_type',backbone_type)
+    #backbone_builder = BACKBONE_REGISTRY[backbone_type]
+    backbone = build_resnet_fpn_backbone(cfg)
 
     info_to_print = [
         "Backbone type: {}".format(cfg.MODEL.BACKBONE.TYPE),
@@ -263,11 +267,12 @@ def build_model(restore_pretrained_backbone_wts=False, logger=None):
 
     # restore pre-trained weights if possible.
     if restore_pretrained_backbone_wts:
-        pretrained_wts_file = os.path.join(ModelPaths.pretrained_backbones_dir(), cfg.MODEL.BACKBONE.PRETRAINED_WEIGHTS)
+        pretrained_wts_file = '/content/Backbone/mask_rcnn_R_101_FPN_backbone.pth'
         print_fn("Restoring backbone weights from '{}'".format(pretrained_wts_file))
         if os.path.exists(pretrained_wts_file):
-            restore_dict = torch.load(pretrained_wts_file)
+            restore_dict = torch.load(pretrained_wts_file,map_location=torch.device('cpu'))
             backbone.load_state_dict(restore_dict, strict=True)
+            print(backbone)
         else:
             raise ValueError("Could not find pre-trained backbone weights file at expected location: '{}'".format(
                 pretrained_wts_file))

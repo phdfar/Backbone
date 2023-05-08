@@ -5,9 +5,9 @@ from collections import OrderedDict
 
 from torch import nn
 
-from stemseg.modeling.backbone.make_layers import conv_with_kaiming_uniform
-from stemseg.modeling.backbone import fpn as fpn_module
-from stemseg.modeling.backbone import resnet
+from make_layers import conv_with_kaiming_uniform
+from backbone import fpn as fpn_module
+from backbone import resnet
 
 
 def build_resnet_fpn_backbone(cfg):
