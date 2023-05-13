@@ -19,7 +19,7 @@ info_to_print = [
 ]
 
 pretrained_wts_file = 'mask_rcnn_R_101_FPN_backbone.pth'
-print_fn("Restoring backbone weights from '{}'".format(pretrained_wts_file))
+#print_fn("Restoring backbone weights from '{}'".format(pretrained_wts_file))
 
 if os.path.exists(pretrained_wts_file):
     restore_dict = torch.load(pretrained_wts_file,map_location=torch.device('cpu'))

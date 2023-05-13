@@ -6,7 +6,7 @@ from collections import namedtuple
 import torch.nn.functional as F
 from torch import nn
 
-from make_layers import Conv2d, FrozenBatchNorm2d
+from backbone.make_layers import Conv2d, FrozenBatchNorm2d
 
 
 # ResNet stage specification

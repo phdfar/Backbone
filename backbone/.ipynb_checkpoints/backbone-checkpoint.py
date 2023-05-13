@@ -5,7 +5,7 @@ from collections import OrderedDict
 
 from torch import nn
 
-from make_layers import conv_with_kaiming_uniform
+from backbone.make_layers import conv_with_kaiming_uniform
 from backbone import fpn as fpn_module
 from backbone import resnet
 
