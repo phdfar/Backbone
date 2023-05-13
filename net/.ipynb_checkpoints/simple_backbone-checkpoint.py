@@ -69,7 +69,7 @@ def run(args,dataloader,dataloader_val):
 
     # Define loss function and optimizer
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 
     num_epochs=args.epoch;
     
