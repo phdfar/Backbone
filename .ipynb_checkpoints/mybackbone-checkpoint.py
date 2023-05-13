@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+
 backbone_type = cfg.MODEL.BACKBONE.TYPE
 print('backbone_type',backbone_type)
 backbone = build_resnet_fpn_backbone(cfg)
