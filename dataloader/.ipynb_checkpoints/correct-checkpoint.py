@@ -57,8 +57,16 @@ def run(args):
     image_paths=[];weak_paths=[];mask_paths=[]
     random.Random(1337).shuffle(sample_file)
     
+    ln = len(sample_file)
+    b=int(ln*0.85)
+    c=int(ln*0.01)
+    d=int(ln*0.14)
+    print('Number train samples '+str(b))
+    print('Number valid samples '+str(c))
+    print('Number test samples '+str(d))
+    print('###################################')
     # Define the paths to your images and masks
-    for i in range(0,3000):
+    for i in range(0,b):
       image_paths.append(args.rgbpath+sample_file[i]['img'])
       mask_paths.append(args.otherpath+sample_file[i]['gt'])
       weak_paths.append(args.otherpath+sample_file[i]['weak'])
@@ -70,7 +78,7 @@ def run(args):
     
     
     image_paths=[];weak_paths=[];mask_paths=[]
-    for i in range(3000,4000):
+    for i in range(b+1,b+1+c):
       image_paths.append(args.rgbpath+sample_file[i]['img'])
       mask_paths.append(args.otherpath+sample_file[i]['gt'])
       weak_paths.append(args.otherpath+sample_file[i]['weak'])
