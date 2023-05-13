@@ -4,6 +4,7 @@ from torchvision import transforms
 import cv2
 from PIL import Image
 import random
+import pickle
 
 # Define your custom dataset class
 class SegmentationDataset(Dataset):

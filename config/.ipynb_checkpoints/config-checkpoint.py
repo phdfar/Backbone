@@ -196,8 +196,8 @@ class YamlConfig(dict):
         yaml_config = cls(d, '')
         return yaml_config
 
-
-cfg = YamlConfig.load_from_file('config/cfg.yaml')
+#print (os.getcwd())
+cfg = YamlConfig.load_from_file(os.getcwd()+'/Backbone/config/cfg.yaml')
 
 
 # def update_cfg(cfg_name='', args=None, prefix_subcfg_list=(), verbose=True):
