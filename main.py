@@ -26,6 +26,7 @@ if __name__ == '__main__':
     parser.add_argument('--restore', type=bool , default=False, required=False)
     parser.add_argument('--gpu', type=bool , default=False, required=False)
     parser.add_argument('--saveiter', type=int , default=3000, required=False)
+    parser.add_argument('--type_output', type=str , default='mask', required=False)
 
     args = parser.parse_args()
 

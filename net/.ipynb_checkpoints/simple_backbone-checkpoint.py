@@ -57,6 +57,9 @@ def run(args,dataloader,dataloader_val):
 
     # Define the segmentation head
     num_classes = 2 # number of classes in your segmentation task
+    if args.type_output=='diff':
+        num_classes = 4
+        
     seg_head = nn.Sequential(
         nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3,padding='same'),
         nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),

@@ -44,6 +44,11 @@ class SegmentationDataset(Dataset):
 
 def run(args):
         
+    if args.type_output=='mask':
+        type_output='gt'
+    if args.type_output=='diff':
+        type_output='diff'
+        
     with open(args.otherpath+'pair_sample/sample.obj', 'rb') as handle:
         sample_file = pickle.load(handle)
 
@@ -61,14 +66,16 @@ def run(args):
     b=int(ln*0.85)
     c=int(ln*0.01)
     d=int(ln*0.14)
+    
     print('Number train samples '+str(b))
     print('Number valid samples '+str(c))
     print('Number test samples '+str(d))
     print('###################################')
+    
     # Define the paths to your images and masks
     for i in range(0,b):
       image_paths.append(args.rgbpath+sample_file[i]['img'])
-      mask_paths.append(args.otherpath+sample_file[i]['gt'])
+      mask_paths.append(args.otherpath+sample_file[i][type_output])
       weak_paths.append(args.otherpath+sample_file[i]['weak'])
 
     
@@ -80,7 +87,7 @@ def run(args):
     image_paths=[];weak_paths=[];mask_paths=[]
     for i in range(b+1,b+1+c):
       image_paths.append(args.rgbpath+sample_file[i]['img'])
-      mask_paths.append(args.otherpath+sample_file[i]['gt'])
+      mask_paths.append(args.otherpath+sample_file[i][type_output])
       weak_paths.append(args.otherpath+sample_file[i]['weak'])
 
     # Create the dataset and dataloader
