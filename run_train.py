@@ -1,6 +1,6 @@
 import random
 from dataloader import correct,binary
-from net import simple_backbone
+from net import simple_backbone,simple_binary
 
 def start(args):
     if args.task=='correct':
