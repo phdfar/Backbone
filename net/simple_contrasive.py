@@ -59,7 +59,7 @@ class SegmentationModel(nn.Module):
     def __init__(self, backbone, seg_head):
         super().__init__()
         
-        self.conv_zero = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding='same')
+        self.conv_zero = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding='same')
         self.backbone = backbone
         self.seg_head = seg_head
 
@@ -90,17 +90,19 @@ def run(args,dataloader,dataloader_val):
     else:
         device = torch.device("cpu")
 
-    # Define the segmentation head
-    num_classes = 2 # number of classes in your segmentation task
-    if args.type_output=='diff':
-        num_classes = 4
         
     seg_head = nn.Sequential(
-        nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-        nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3,padding='same'),
-        nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-        nn.Conv2d(in_channels=128, out_channels=num_classes, kernel_size=3,padding='same'),
-        nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+        nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3,padding='same'),
+        nn.MaxPool2d(2),
+        nn.Conv2d(in_channels=64, out_channels=32, kernel_size=3,padding='same'),
+        nn.MaxPool2d(2),
+        nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3,padding='same'),
+        nn.MaxPool2d(2),
+        nn.Flatten(start_dim=1),
+        nn.ReLU(inplace=True),
+        nn.Linear(960, 128),
+        nn.ReLU(inplace=True),
+        nn.Linear(128, 128)
     )
 
     backbone = loadbackbone(args,device)
@@ -116,25 +118,32 @@ def run(args,dataloader,dataloader_val):
     # Train the model
     for epoch in range(num_epochs):
         pbar = tqdm(dataloader);i=0;
-        for batch_idx, (data, _) in enumerate(pbar):
+        for batch_idx, data in enumerate(pbar):
           
           data = data.to(device)
           
+
           # Positive and negative samples
+          indices = torch.randperm(data.shape[0])
           anchor, positive = torch.split(data, split_size_or_sections=data.shape[0]//2, dim=0)
-          negative = data[torch.randperm(data.shape[0])]
-  
+          negative_indices = indices[data.shape[0]//2:]
+          negative = data[negative_indices]
+
           # Forward pass
           anchor_embed = model(anchor)
           pos_embed = model(positive)
           neg_embed = model(negative)
-  
+
           # Contrastive loss
           pos_similarity = torch.cosine_similarity(anchor_embed, pos_embed, dim=1)
           neg_similarity = torch.cosine_similarity(anchor_embed, neg_embed, dim=1)
-          targets = torch.zeros(data.shape[0]).long().to(device)
-          loss = criterion(torch.cat([pos_similarity, neg_similarity]), targets)
-  
+       
+          # Compute contrastive loss
+          similarity = torch.cat([pos_similarity, neg_similarity])
+          labels = torch.zeros_like(similarity).float()
+          labels[:pos_similarity.shape[0]] = 1 # Set labels for positive samples to 1
+          loss = criterion(similarity, labels)
+
           # Backward pass
           optimizer.zero_grad()
           loss.backward()
