@@ -27,6 +27,8 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', type=bool , default=False, required=False)
     parser.add_argument('--saveiter', type=int , default=3000, required=False)
     parser.add_argument('--type_output', type=str , default='mask', required=False)
+    parser.add_argument('--pretrain', type=str , default='/content/CondInst_MS_R_50_1x.pth', required=False)
+
 
     args = parser.parse_args()
 
