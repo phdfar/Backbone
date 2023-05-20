@@ -165,8 +165,3 @@ def run(args,dataloader,dataloader_val):
               model.train()
               #print('##################################################')
             i=i+1;
-_dir)
-
-              model.train()
-              #print('##################################################')
-            i=i+1;

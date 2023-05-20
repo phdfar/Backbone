@@ -84,7 +84,7 @@ def run(args):
     return dataloader,dataloader_val
 
 
-  asetv, batch_size=args.batchsize, shuffle=True)
+    datasetv= SegmentationDataset(image_paths, mask_paths, transform=transform)
     
     return dataloader,dataloader_val
 
