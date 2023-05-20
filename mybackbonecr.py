@@ -1,30 +1,19 @@
-from collections import OrderedDict
-from functools import partial
-from backbone.backbone import build_resnet_fpn_backbone
-from config import cfg
-import math
-import os
+from backbonecr.fpn import *
+from backbonecr.config import cfg
+
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import os
 
+def load(cfg):
 
+  backbone = build_fcos_resnet_fpn_backbone(cfg)
+  pretrained_wts_file = 'CondInst_MS_R_50_1x.pth'
 
-backbone_type = cfg.MODEL.BACKBONE.TYPE
-print('backbone_type',backbone_type)
-backbone = build_resnet_fpn_backbone(cfg)
+  if os.path.exists(pretrained_wts_file):
 
-info_to_print = [
-    "Backbone type: {}".format(cfg.MODEL.BACKBONE.TYPE),
-    "Backbone frozen: {}".format("Yes" if cfg.TRAINING.FREEZE_BACKBONE else "No")
-]
-
-pretrained_wts_file = 'mask_rcnn_R_101_FPN_backbone.pth'
-#print_fn("Restoring backbone weights from '{}'".format(pretrained_wts_file))
-
-if os.path.exists(pretrained_wts_file):
-    restore_dict = torch.load(pretrained_wts_file,map_location=torch.device('cpu'))
-    backbone.load_state_dict(restore_dict, strict=True)
-    print(backbone)
-            
-
+      print("Restoring backbone weights from '{}'".format(pretrained_wts_file))
+      restore_dict = torch.load(pretrained_wts_file,map_location=torch.device('cpu'))
+      restore_dict = {k.replace('backbone.', ''): v for k, v in restore_dict.items()}
+      backbone.load_state_dict(restore_dict, strict=False)
+  
+  return backbone
