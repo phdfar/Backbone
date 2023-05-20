@@ -3,15 +3,17 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from collections import OrderedDict
-from functools import parfrom backbonecr.fpn import *
+from functools import partial
+from backbonecr.fpn import *
 from backbonecr.config import cfg
 import torch
-import osort cfg
+import os
 import math
 import os
 import torch
 import torch.nn as nn
-import torch.nn.func
+import torch.nn.functional as F
+
 def aligned_bilinear(tensor, factor):
     assert tensor.dim() == 4
     assert factor >= 1
@@ -33,11 +35,10 @@ def aligned_bilinear(tensor, factor):
                    mode='replicate')
 
     return tensor[:, :, :oh - 1, :ow - 1]
-tional as F
 
 
     
-def loadb
+def loadbackbone(device):
     
     backbone = build_fcos_resnet_fpn_backbone(cfg)
     pretrained_wts_file = 'CondInst_MS_R_50_1x.pth'
@@ -46,18 +47,21 @@ def loadb
         restore_dict = torch.load(pretrained_wts_file,map_location=device)
         restore_dict = {k.replace('backbone.', ''): v for k, v in restore_dict.items()}
         backbone.load_state_dict(restore_dict, strict=False)
-        _dict(restore_dict, strict=True)
+        
     return backbone
 
 
 # Define the full model
 class SegmentationModel(nn.Module):
-    def __init__(self, backbone,
+    def __init__(self, backbone, seg_head):
+        super().__init__()
         
-        self.conv_zero = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding='same') seg_head):
-        supebackboneit__()
+        self.conv_zero = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding='same')
         self.backbone = backbone
-        self.seg_heolate(x[1], size=(96, 160), mode='r
+        self.seg_head = seg_head
+
+    def forward(self, x):
+        features = self.backbone(x)
         
         for i, f in enumerate(features):
             if i == 0:
@@ -72,9 +76,8 @@ class SegmentationModel(nn.Module):
                 assert factor_h == factor_w
                 x_p = aligned_bilinear(x_p, factor_h)
                 x = x + x_p
-x[0])
-        z = (features[0]*wx+features[0]
-        seg_map = self.seg_head(z)
+
+        seg_map = self.seg_head(x)
         return seg_map
 
 def run(args,dataloader,dataloader_val):
@@ -87,10 +90,10 @@ def run(args,dataloader,dataloader_val):
     # Define the segmentation head
     num_classes = 2 # number of classes in your segmentation task
     if args.type_output=='diff':
-  
-        nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),      num_classes = 4
+        num_classes = 4
         
     seg_head = nn.Sequential(
+        nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
         nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3,padding='same'),
         nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
         nn.Conv2d(in_channels=128, out_channels=num_classes, kernel_size=3,padding='same'),
@@ -109,10 +112,11 @@ def run(args,dataloader,dataloader_val):
     best_val_loss=10000;
     # Train the model
     import sys
-    for eporange(num_epochs):
+    for epoch in range(num_epochs):
         pbar = tqdm(dataloader);i=0;
-        for images, eak, masks in pbaptimizer.zero_grad()
-            outputs = model([images.to(device),weak.to(device)])
+        for images, masks in pbar:
+            optimizer.zero_grad()
+            outputs = model(images.to(device))
             masks = masks.long().to(device)
             loss = criterion(outputs, masks)
             loss.backward()
@@ -136,10 +140,10 @@ def run(args,dataloader,dataloader_val):
               # Evaluate the model on validation set
               model.eval()
               val_loss = 0
-           rch.no_grad():
+              with torch.no_grad():
                   #pbar_val = tqdm(dataloader_val)
-                 for imagks_val in dataloader_val:
-                      outputs_val = model([images_val.to(device),weak_val.to(device)])
+                  for images_val, masks_val in dataloader_val:
+                      outputs_val = model(images_val.to(device))
                       masks_val = masks_val.long().to(device)
                       tmp = criterion(outputs_val, masks_val).item()
                       val_loss += tmp
@@ -157,6 +161,11 @@ def run(args,dataloader,dataloader_val):
                   best_val_loss = val_loss
                   #os.system('rm '+args.model_dir)
                   torch.save(model.state_dict(), args.model_dir)
+
+              model.train()
+              #print('##################################################')
+            i=i+1;
+_dir)
 
               model.train()
               #print('##################################################')
