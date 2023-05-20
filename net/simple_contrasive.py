@@ -116,29 +116,37 @@ def run(args,dataloader,dataloader_val):
     # Train the model
     for epoch in range(num_epochs):
         pbar = tqdm(dataloader);i=0;
-        for images, masks in pbar:
-            optimizer.zero_grad()
-            outputs = model(images.to(device))
-            masks = masks.long().to(device)
-            loss = criterion(outputs, masks)
-            loss.backward()
-            optimizer.step()
+        for batch_idx, (data, _) in enumerate(pbar):
+          
+          data = data.to(device)
+          
+          # Positive and negative samples
+          anchor, positive = torch.split(data, split_size_or_sections=data.shape[0]//2, dim=0)
+          negative = data[torch.randperm(data.shape[0])]
+  
+          # Forward pass
+          anchor_embed = model(anchor)
+          pos_embed = model(positive)
+          neg_embed = model(negative)
+  
+          # Contrastive loss
+          pos_similarity = torch.cosine_similarity(anchor_embed, pos_embed, dim=1)
+          neg_similarity = torch.cosine_similarity(anchor_embed, neg_embed, dim=1)
+          targets = torch.zeros(data.shape[0]).long().to(device)
+          loss = criterion(torch.cat([pos_similarity, neg_similarity]), targets)
+  
+          # Backward pass
+          optimizer.zero_grad()
+          loss.backward()
+          optimizer.step()
 
-            """
-            with torch.no_grad():
-              outputs = model([images.to(device),weak.to(device)])
-              y = outputs.detach().cpu().numpy();g = np.argmax(y[0], axis=0)
-              str_num = '{:05d}'.format(epoch)
-              cv2.imwrite('/content/out/'+str(str_num)+'.png',addtext(g,'epoch-'+str(epoch)))
-            # Update the progress bar with the current loss value
-            """
-            pbar.set_description(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.4f}")
+          pbar.set_description(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.4f}")
             
             #if (i+1)%args.saveiter==0:
 
               #validation ##################################
         print('validation...>')
-
+        """
         # Evaluate the model on validation set
         model.eval()
         val_loss = 0
@@ -160,5 +168,7 @@ def run(args,dataloader,dataloader_val):
             torch.save(model.state_dict(), args.model_dir)
 
         model.train()
+        
+        """
         #print('##################################################')
       #i=i+1;
