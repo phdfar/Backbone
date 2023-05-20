@@ -135,36 +135,31 @@ def run(args,dataloader,dataloader_val):
             """
             pbar.set_description(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.4f}")
             
-            if (i+1)%args.saveiter==0:
+            #if (i+1)%args.saveiter==0:
 
               #validation ##################################
-              print('validation...>')
+        print('validation...>')
 
-              # Evaluate the model on validation set
-              model.eval()
-              val_loss = 0
-              with torch.no_grad():
-                  #pbar_val = tqdm(dataloader_val)
-                  for images_val, masks_val in dataloader_val:
-                      outputs_val = model(images_val.to(device))
-                      masks_val = masks_val.long().to(device)
-                      tmp = criterion(outputs_val, masks_val).item()
-                      val_loss += tmp
-                      #sys.stdout.write("\033[K") # Clear to the end of line
-                      #pbar_val.set_description('iter: '+str(i)+f" Epoch {epoch+1}/{num_epochs}, VAL-Loss: {tmp:.4f}")
-                      #print('iter: '+str(i)+f" Epoch {epoch+1}/{num_epochs}, VAL-Loss: {tmp:.4f}")
-                      #print("\033[K")
-                      #sys.stdout.write('\r')
+        # Evaluate the model on validation set
+        model.eval()
+        val_loss = 0
+        with torch.no_grad():
+            #pbar_val = tqdm(dataloader_val)
+            for images_val, masks_val in dataloader_val:
+                outputs_val = model(images_val.to(device))
+                masks_val = masks_val.long().to(device)
+                tmp = criterion(outputs_val, masks_val).item()
+                val_loss += tmp
+               
 
-              val_loss /= len(dataloader_val)
-              print('iter: '+str(i)+ f" ======>>> Epoch {epoch+1}/{num_epochs}, Mean VAL-Loss: {val_loss:.4f}")
-              # Save the best model based on validation loss
-              #print('')
-              if val_loss < best_val_loss:
-                  best_val_loss = val_loss
-                  #os.system('rm '+args.model_dir)
-                  torch.save(model.state_dict(), args.model_dir)
+        val_loss /= len(dataloader_val)
+        print('iter: '+str(i)+ f" ======>>> Epoch {epoch+1}/{num_epochs}, Mean VAL-Loss: {val_loss:.4f}")
+        # Save the best model based on validation loss
+        #print('')
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), args.model_dir)
 
-              model.train()
-              #print('##################################################')
-            i=i+1;
+        model.train()
+        #print('##################################################')
+      #i=i+1;
