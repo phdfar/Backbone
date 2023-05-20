@@ -38,15 +38,18 @@ def aligned_bilinear(tensor, factor):
 
 
     
-def loadbackbone(device):
+def loadbackbone(args,device):
     
     backbone = build_fcos_resnet_fpn_backbone(cfg)
-    pretrained_wts_file = 'CondInst_MS_R_50_1x.pth'
+    pretrained_wts_file = args.pretrain
     if os.path.exists(pretrained_wts_file):
         print('Backbone Loaded From ',pretrained_wts_file)
         restore_dict = torch.load(pretrained_wts_file,map_location=device)
         restore_dict = {k.replace('backbone.', ''): v for k, v in restore_dict.items()}
         backbone.load_state_dict(restore_dict, strict=False)
+    
+    else:
+      print('NOT exist')
         
     return backbone
 
@@ -56,7 +59,7 @@ class SegmentationModel(nn.Module):
     def __init__(self, backbone, seg_head):
         super().__init__()
         
-        self.conv_zero = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding='same')
+        self.conv_zero = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding='same')
         self.backbone = backbone
         self.seg_head = seg_head
 
@@ -65,9 +68,9 @@ class SegmentationModel(nn.Module):
         
         for i, f in enumerate(features):
             if i == 0:
-                x = conv_zero(features[f])
+                x = self.conv_zero(features[f])
             else:
-                x_p = conv_zero(features[f])
+                x_p = self.conv_zero(features[f])
                 target_h, target_w = x.size()[2:]
                 h, w = x_p.size()[2:]
                 assert target_h % h == 0
@@ -76,7 +79,7 @@ class SegmentationModel(nn.Module):
                 assert factor_h == factor_w
                 x_p = aligned_bilinear(x_p, factor_h)
                 x = x + x_p
-
+        
         seg_map = self.seg_head(x)
         return seg_map
 
@@ -100,7 +103,7 @@ def run(args,dataloader,dataloader_val):
         nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
     )
 
-    backbone = loadbackbone(device)
+    backbone = loadbackbone(args,device)
     model = SegmentationModel(backbone, seg_head).to(device)
 
     # Define loss function and optimizer

@@ -6,6 +6,8 @@ from PIL import Image
 import random
 import pickle
 import glob
+import os
+import numpy as np
 
 # Define your custom dataset class
 class SegmentationDataset(Dataset):
@@ -20,7 +22,7 @@ class SegmentationDataset(Dataset):
     def __getitem__(self, idx):
        
         image= cv2.imread(self.image_paths[idx], cv2.IMREAD_COLOR)
-        mask= cv2.imread(self.mask_paths[idx],0).astype('float')
+        mask= np.ceil(cv2.imread(self.mask_paths[idx],0).astype('float')/255)
 
         image = Image.fromarray(image)
         mask = Image.fromarray(mask)
@@ -39,8 +41,10 @@ def run(args):
     for a in ann:
         sp = a.split('/');
         img=args.rgbpath+'train/JPEGImages/'+sp[-2]+'/'+sp[-1]
-        sample_file.append({'img':img,'mask':a})
-    
+        img=img.replace('.png','.jpg')
+
+        if os.path.exists(img):
+          sample_file.append({'img':img,'mask':a})
 
     # Define the transformation to apply to the image and mask
     transform = transforms.Compose([
@@ -53,9 +57,9 @@ def run(args):
     random.Random(1337).shuffle(sample_file)
     
     ln = len(sample_file)
-    b=int(ln*0.85)
-    c=int(ln*0.01)
-    d=int(ln*0.14)
+    b=int(ln*0.9)
+    c=int(ln*0.05)
+    d=int(ln*0.05)
     
     print('Number train samples '+str(b))
     print('Number valid samples '+str(c))
