@@ -35,49 +35,6 @@ from torchvision.datasets import STL10
 from tqdm.notebook import tqdm
 
 
-def train_simclr(batch_size, max_epochs=500, **kwargs):
-    trainer = L.Trainer(
-        default_root_dir=os.path.join(CHECKPOINT_PATH, "SimCLR"),
-        accelerator="auto",
-        devices=1,
-        max_epochs=max_epochs,
-        callbacks=[
-            ModelCheckpoint(save_weights_only=True, mode="max", monitor="val_acc_top5"),
-            LearningRateMonitor("epoch"),
-        ],
-    )
-    trainer.logger._default_hp_metric = None  # Optional logging argument that we don't need
-
-    # Check whether pretrained model exists. If yes, load it and skip training
-    pretrained_filename = os.path.join(CHECKPOINT_PATH, "SimCLR.ckpt")
-    if os.path.isfile(pretrained_filename):
-        print(f"Found pretrained model at {pretrained_filename}, loading...")
-        # Automatically loads the model with the saved hyperparameters
-        model = SimCLR.load_from_checkpoint(pretrained_filename)
-    else:
-        train_loader = data.DataLoader(
-            unlabeled_data,
-            batch_size=batch_size,
-            shuffle=True,
-            drop_last=True,
-            pin_memory=True,
-            num_workers=NUM_WORKERS,
-        )
-        val_loader = data.DataLoader(
-            train_data_contrast,
-            batch_size=batch_size,
-            shuffle=False,
-            drop_last=False,
-            pin_memory=True,
-            num_workers=NUM_WORKERS,
-        )
-        L.seed_everything(42)  # To be reproducable
-        model = SimCLR(max_epochs=max_epochs, **kwargs)
-        trainer.fit(model, train_loader, val_loader)
-        # Load best checkpoint after training
-        model = SimCLR.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
-
-    return model
   
 def aligned_bilinear(tensor, factor):
     assert tensor.dim() == 4
@@ -118,37 +75,101 @@ def loadbackbone(args,device):
         
     return backbone
 
-
-# Define the full model
-class SegmentationModel(nn.Module):
-    def __init__(self, backbone, seg_head):
+class SimCLR(L.LightningModule):
+    def __init__(self, hidden_dim, lr, temperature, weight_decay, max_epochs=500,backbone,seg_head):
         super().__init__()
+        self.save_hyperparameters()
+        assert self.hparams.temperature > 0.0, "The temperature must be a positive float!"
+        
         
         self.conv_zero = [nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding='same') for _ in range(0,5)]
         self.backbone = backbone
         self.seg_head = seg_head
-
-    def forward(self, x):
-        features = self.backbone(x)
         
-        for i, f in enumerate(features):
-            if i == 0:
-                x = self.conv_zero[i](features[f])
-            else:
-                x_p = self.conv_zero[i](features[f])
-                target_h, target_w = x.size()[2:]
-                h, w = x_p.size()[2:]
-                assert target_h % h == 0
-                assert target_w % w == 0
-                factor_h, factor_w = target_h // h, target_w // w
-                assert factor_h == factor_w
-                x_p = aligned_bilinear(x_p, factor_h)
-                x = x + x_p
-        
-        seg_map = self.seg_head(x)
-        return seg_map
+        """
+        # Base model f(.)
+        self.convnet = torchvision.models.resnet18(
+            pretrained=False, num_classes=4 * hidden_dim
+        )  # num_classes is the output size of the last linear layer
+        # The MLP for g(.) consists of Linear->ReLU->Linear
+        self.convnet.fc = nn.Sequential(
+            self.convnet.fc,  # Linear(ResNet output, 4*hidden_dim)
+            nn.ReLU(inplace=True),
+            nn.Linear(4 * hidden_dim, hidden_dim),
+        )
+        """
 
-def run(args,dataloader,dataloader_val):
+    def configure_optimizers(self):
+        optimizer = optim.AdamW(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=self.hparams.max_epochs, eta_min=self.hparams.lr / 50
+        )
+        return [optimizer], [lr_scheduler]
+      
+      
+    def convnet(self,x):
+      features = self.backbone(x)
+      for i, f in enumerate(features):
+          if i == 0:
+              x = self.conv_zero[i](features[f])
+          else:
+              x_p = self.conv_zero[i](features[f])
+              target_h, target_w = x.size()[2:]
+              h, w = x_p.size()[2:]
+              assert target_h % h == 0
+              assert target_w % w == 0
+              factor_h, factor_w = target_h // h, target_w // w
+              assert factor_h == factor_w
+              x_p = aligned_bilinear(x_p, factor_h)
+              x = x + x_p
+      
+      seg_map = self.seg_head(x)
+      
+      return seg_map
+
+    def info_nce_loss(self, batch, mode="train"):
+        imgs, _ = batch
+        imgs = torch.cat(imgs, dim=0)
+
+        # Encode all images
+        feats = self.convnet(imgs)
+        # Calculate cosine similarity
+        cos_sim = F.cosine_similarity(feats[:, None, :], feats[None, :, :], dim=-1)
+        # Mask out cosine similarity to itself
+        self_mask = torch.eye(cos_sim.shape[0], dtype=torch.bool, device=cos_sim.device)
+        cos_sim.masked_fill_(self_mask, -9e15)
+        # Find positive example -> batch_size//2 away from the original example
+        pos_mask = self_mask.roll(shifts=cos_sim.shape[0] // 2, dims=0)
+        # InfoNCE loss
+        cos_sim = cos_sim / self.hparams.temperature
+        nll = -cos_sim[pos_mask] + torch.logsumexp(cos_sim, dim=-1)
+        nll = nll.mean()
+
+        # Logging loss
+        self.log(mode + "_loss", nll)
+        # Get ranking position of positive example
+        comb_sim = torch.cat(
+            [cos_sim[pos_mask][:, None], cos_sim.masked_fill(pos_mask, -9e15)],  # First position positive example
+            dim=-1,
+        )
+        sim_argsort = comb_sim.argsort(dim=-1, descending=True).argmin(dim=-1)
+        # Logging ranking metrics
+        self.log(mode + "_acc_top1", (sim_argsort == 0).float().mean())
+        self.log(mode + "_acc_top5", (sim_argsort < 5).float().mean())
+        self.log(mode + "_acc_mean_pos", 1 + sim_argsort.float().mean())
+
+        return nll
+
+    def training_step(self, batch, batch_idx):
+        return self.info_nce_loss(batch, mode="train")
+
+    def validation_step(self, batch, batch_idx):
+        self.info_nce_loss(batch, mode="val")
+        
+
+
+
+def run(args,train_loader,val_loader):
         
     if args.gpu==True:
         device = torch.device("cuda:0")
@@ -171,10 +192,13 @@ def run(args,dataloader,dataloader_val):
     )
 
     backbone = loadbackbone(args,device)
-    model = SegmentationModel(backbone, seg_head).to(device)
-
     
-    # Setting the seed
+    max_epochs=args.epoch
+    
+    CHECKPOINT_PATH = args.basepath
+    
+    #os.makedirs(CHECKPOINT_PATH, exist_ok=True)
+
     L.seed_everything(42)
     
     # Ensure that all operations are deterministic on GPU (if used) for reproducibility
@@ -182,76 +206,28 @@ def run(args,dataloader,dataloader_val):
     torch.backends.cudnn.benchmark = False
 
     
-    # Define loss function and optimizer
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+    trainer = L.Trainer(
+        default_root_dir=os.path.join(CHECKPOINT_PATH, "SimCLR"),
+        accelerator="auto",
+        devices=1,
+        max_epochs=max_epochs,
+        callbacks=[
+            ModelCheckpoint(save_weights_only=True, mode="max", monitor="val_acc_top5"),
+            LearningRateMonitor("epoch"),
+        ],
+    )
+    trainer.logger._default_hp_metric = None  # Optional logging argument that we don't need
 
-    num_epochs=args.epoch;
+    # Check whether pretrained model exists. If yes, load it and skip training
+    pretrained_filename = os.path.join(CHECKPOINT_PATH, "SimCLR.ckpt")
+    if os.path.isfile(pretrained_filename):
+        print(f"Found pretrained model at {pretrained_filename}, loading...")
+        # Automatically loads the model with the saved hyperparameters
+        model = SimCLR.load_from_checkpoint(pretrained_filename)
+    else:
+        L.seed_everything(42)  # To be reproducable
+        model = SimCLR(backbone=backbone,seg_head=seg_head,max_epochs=max_epochs,batch_size=256, hidden_dim=128, lr=5e-4, temperature=0.07, weight_decay=1e-4, max_epochs=args.epoch)
+        trainer.fit(model, train_loader, val_loader)
+        # Load best checkpoint after training
+        model = SimCLR.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
     
-    best_val_loss=10000;
-    # Train the model
-    for epoch in range(num_epochs):
-        pbar = tqdm(dataloader);i=0;
-        for batch_idx, data in enumerate(pbar):
-          
-          data = data.to(device)
-          
-
-          # Positive and negative samples
-          indices = torch.randperm(data.shape[0])
-          anchor, positive = torch.split(data, split_size_or_sections=data.shape[0]//2, dim=0)
-          negative_indices = indices[data.shape[0]//2:]
-          negative = data[negative_indices]
-
-          # Forward pass
-          anchor_embed = model(anchor)
-          pos_embed = model(positive)
-          neg_embed = model(negative)
-
-          # Contrastive loss
-          pos_similarity = torch.cosine_similarity(anchor_embed, pos_embed, dim=1)
-          neg_similarity = torch.cosine_similarity(anchor_embed, neg_embed, dim=1)
-       
-          # Compute contrastive loss
-          similarity = torch.cat([pos_similarity, neg_similarity])
-          labels = torch.zeros_like(similarity).float()
-          labels[:pos_similarity.shape[0]] = 1 # Set labels for positive samples to 1
-          loss = criterion(similarity, labels)
-
-          # Backward pass
-          optimizer.zero_grad()
-          loss.backward()
-          optimizer.step()
-
-          pbar.set_description(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.4f}")
-            
-            #if (i+1)%args.saveiter==0:
-
-              #validation ##################################
-        print('validation...>')
-        """
-        # Evaluate the model on validation set
-        model.eval()
-        val_loss = 0
-        with torch.no_grad():
-            #pbar_val = tqdm(dataloader_val)
-            for images_val, masks_val in dataloader_val:
-                outputs_val = model(images_val.to(device))
-                masks_val = masks_val.long().to(device)
-                tmp = criterion(outputs_val, masks_val).item()
-                val_loss += tmp
-               
-
-        val_loss /= len(dataloader_val)
-        print('iter: '+str(i)+ f" ======>>> Epoch {epoch+1}/{num_epochs}, Mean VAL-Loss: {val_loss:.4f}")
-        # Save the best model based on validation loss
-        #print('')
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            torch.save(model.state_dict(), args.model_dir)
-
-        model.train()
-        
-        """
-        #print('##################################################')
-      #i=i+1;
