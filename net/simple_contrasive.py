@@ -76,15 +76,15 @@ def loadbackbone(args,device):
     return backbone
 
 class SimCLR(L.LightningModule):
-    def __init__(self, hidden_dim, lr, temperature, weight_decay, max_epochs=500,backbone,seg_head):
+    def __init__(self, backbone , seg_head , hidden_dim, lr, temperature, weight_decay, max_epochs=500):
         super().__init__()
         self.save_hyperparameters()
         assert self.hparams.temperature > 0.0, "The temperature must be a positive float!"
         
         
-        self.conv_zero = [nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding='same') for _ in range(0,5)]
+        self.conv_zero = [nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding='same').to(torch.device("cuda:0")) for _ in range(0,5)]
         self.backbone = backbone
-        self.seg_head = seg_head
+        self.seg_head = seg_head.to(torch.device("cuda:0"))
         
         """
         # Base model f(.)
@@ -131,10 +131,16 @@ class SimCLR(L.LightningModule):
         imgs, _ = batch
         imgs = torch.cat(imgs, dim=0)
 
+
         # Encode all images
         feats = self.convnet(imgs)
         # Calculate cosine similarity
         cos_sim = F.cosine_similarity(feats[:, None, :], feats[None, :, :], dim=-1)
+
+        #print('feats',feats.size())
+        #print('cos_sim',cos_sim.size())
+
+
         # Mask out cosine similarity to itself
         self_mask = torch.eye(cos_sim.shape[0], dtype=torch.bool, device=cos_sim.device)
         cos_sim.masked_fill_(self_mask, -9e15)
@@ -176,7 +182,7 @@ def run(args,train_loader,val_loader):
     else:
         device = torch.device("cpu")
 
-        
+
     seg_head = nn.Sequential(
         nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3,padding='same'),
         nn.MaxPool2d(2),
@@ -186,9 +192,9 @@ def run(args,train_loader,val_loader):
         nn.MaxPool2d(2),
         nn.Flatten(start_dim=1),
         nn.ReLU(inplace=True),
-        nn.Linear(960, 128),
+        nn.Linear(960, 512),
         nn.ReLU(inplace=True),
-        nn.Linear(128, 128)
+        nn.Linear(512, 128)
     )
 
     backbone = loadbackbone(args,device)
@@ -208,7 +214,7 @@ def run(args,train_loader,val_loader):
     
     trainer = L.Trainer(
         default_root_dir=os.path.join(CHECKPOINT_PATH, "SimCLR"),
-        accelerator="auto",
+        accelerator="gpu",
         devices=1,
         max_epochs=max_epochs,
         callbacks=[
@@ -226,8 +232,10 @@ def run(args,train_loader,val_loader):
         model = SimCLR.load_from_checkpoint(pretrained_filename)
     else:
         L.seed_everything(42)  # To be reproducable
-        model = SimCLR(backbone=backbone,seg_head=seg_head,max_epochs=max_epochs,batch_size=256, hidden_dim=128, lr=5e-4, temperature=0.07, weight_decay=1e-4, max_epochs=args.epoch)
+        model = SimCLR(backbone=backbone,seg_head=seg_head, hidden_dim=128, lr=5e-4, temperature=0.07, weight_decay=1e-4, max_epochs=args.epoch)
+        print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
         trainer.fit(model, train_loader, val_loader)
+
         # Load best checkpoint after training
-        model = SimCLR.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
+        #model = SimCLR.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
     
