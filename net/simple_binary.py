@@ -59,7 +59,7 @@ class SegmentationModel(nn.Module):
     def __init__(self, backbone, seg_head):
         super().__init__()
         
-        self.conv_zero = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding='same')
+        self.conv_zero = [nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding='same').to(torch.device("cuda:0")) for _ in range(0,5)]
         self.backbone = backbone
         self.seg_head = seg_head
 
@@ -68,9 +68,9 @@ class SegmentationModel(nn.Module):
         
         for i, f in enumerate(features):
             if i == 0:
-                x = self.conv_zero(features[f])
+                x = self.conv_zero[i](features[f])
             else:
-                x_p = self.conv_zero(features[f])
+                x_p = self.conv_zero[i](features[f])
                 target_h, target_w = x.size()[2:]
                 h, w = x_p.size()[2:]
                 assert target_h % h == 0
