@@ -13,7 +13,72 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import os
+import urllib.request
+from copy import deepcopy
+from urllib.error import HTTPError
 
+import lightning as L
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib_inline.backend_inline
+import seaborn as sns
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torch.utils.data as data
+import torchvision
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
+from torchvision import transforms
+from torchvision.datasets import STL10
+from tqdm.notebook import tqdm
+
+
+def train_simclr(batch_size, max_epochs=500, **kwargs):
+    trainer = L.Trainer(
+        default_root_dir=os.path.join(CHECKPOINT_PATH, "SimCLR"),
+        accelerator="auto",
+        devices=1,
+        max_epochs=max_epochs,
+        callbacks=[
+            ModelCheckpoint(save_weights_only=True, mode="max", monitor="val_acc_top5"),
+            LearningRateMonitor("epoch"),
+        ],
+    )
+    trainer.logger._default_hp_metric = None  # Optional logging argument that we don't need
+
+    # Check whether pretrained model exists. If yes, load it and skip training
+    pretrained_filename = os.path.join(CHECKPOINT_PATH, "SimCLR.ckpt")
+    if os.path.isfile(pretrained_filename):
+        print(f"Found pretrained model at {pretrained_filename}, loading...")
+        # Automatically loads the model with the saved hyperparameters
+        model = SimCLR.load_from_checkpoint(pretrained_filename)
+    else:
+        train_loader = data.DataLoader(
+            unlabeled_data,
+            batch_size=batch_size,
+            shuffle=True,
+            drop_last=True,
+            pin_memory=True,
+            num_workers=NUM_WORKERS,
+        )
+        val_loader = data.DataLoader(
+            train_data_contrast,
+            batch_size=batch_size,
+            shuffle=False,
+            drop_last=False,
+            pin_memory=True,
+            num_workers=NUM_WORKERS,
+        )
+        L.seed_everything(42)  # To be reproducable
+        model = SimCLR(max_epochs=max_epochs, **kwargs)
+        trainer.fit(model, train_loader, val_loader)
+        # Load best checkpoint after training
+        model = SimCLR.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
+
+    return model
+  
 def aligned_bilinear(tensor, factor):
     assert tensor.dim() == 4
     assert factor >= 1
@@ -59,7 +124,7 @@ class SegmentationModel(nn.Module):
     def __init__(self, backbone, seg_head):
         super().__init__()
         
-        self.conv_zero = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding='same')
+        self.conv_zero = [nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding='same') for _ in range(0,5)]
         self.backbone = backbone
         self.seg_head = seg_head
 
@@ -68,9 +133,9 @@ class SegmentationModel(nn.Module):
         
         for i, f in enumerate(features):
             if i == 0:
-                x = self.conv_zero(features[f])
+                x = self.conv_zero[i](features[f])
             else:
-                x_p = self.conv_zero(features[f])
+                x_p = self.conv_zero[i](features[f])
                 target_h, target_w = x.size()[2:]
                 h, w = x_p.size()[2:]
                 assert target_h % h == 0
@@ -108,6 +173,15 @@ def run(args,dataloader,dataloader_val):
     backbone = loadbackbone(args,device)
     model = SegmentationModel(backbone, seg_head).to(device)
 
+    
+    # Setting the seed
+    L.seed_everything(42)
+    
+    # Ensure that all operations are deterministic on GPU (if used) for reproducibility
+    torch.backends.cudnn.determinstic = True
+    torch.backends.cudnn.benchmark = False
+
+    
     # Define loss function and optimizer
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
